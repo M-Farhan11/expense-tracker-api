@@ -1,11 +1,12 @@
 from fastapi import FastAPI
-#import mysql.connector
+import mysql.connector
+from mysql.connector import pooling
 from pydantic import BaseModel , Field
 from pydantic import validator
 from datetime import date
 import os 
 from dotenv import load_dotenv
-from mysql import pooling
+
 
 load_dotenv()
 passw = os.getenv("DB_Password")
