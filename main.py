@@ -1,34 +1,25 @@
-from fastapi import FastAPI
-import mysql.connector
-from mysql.connector import pooling
+from fastapi import FastAPI ,HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+import asyncio
 from pydantic import BaseModel , Field
 from pydantic import validator
 from datetime import date
-import os 
-from dotenv import load_dotenv
-
-
-load_dotenv()
-passw = os.getenv("DB_Password")
-
-if passw is None:
-   print("No password found! ")
-
-db_pool = pooling.MySQLConnectionPool(
-   pool_name = "expense_pool",
-   pool_size = 10,
-    host = "localhost",
-    user = "root",
-    password = passw,
-    database = "expense_tracker"
-)
-#cursor = db.cursor(dictionary = True)
-def get_db():
-   return db_pool.get_connection()
+from db import get_db
 
 app = FastAPI()
+
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 @app.get("/")
-def home():
+async def home():
+    await asyncio.sleep(2)
     return{"Message ": "Works "}
 
 class Expense (BaseModel):
@@ -72,7 +63,7 @@ def add_expense(expense: Expense):
 @app.get("/expenses")
 def view_expense():
    conn = get_db()
-   cursor = conn.cursor(Dictoinary = True)
+   cursor = conn.cursor(dictionary=True)
 
    cursor.execute("SELECT * FROM expenses ")
    result = cursor.fetchall()
@@ -84,15 +75,22 @@ def view_expense():
 @app.delete("/expenses/{expense_id}")
 def delete_expense(expense_id : int):
    conn = get_db()
-   cursor = conn.cursor(Dictionary = True)
+   cursor = conn.cursor(dictionary=True)
 
    cursor.execute("DELETE From expenses WHERE id = %s ", (expense_id, ))
    conn.commit()
-   affected = cursor.rowcount
+   if cursor.rowcount == 0:
+      cursor.close()
+      conn.close()
+      raise HTTPException(
+         status_code= 404,
+         detail= "Expense Not Found !"
+      )
+   
    cursor.close()
    conn.close()
 
-   return {"message": "Deleted"} if affected else {"error": "Not found"}
+   return {"Message": "Expense deleted"} 
    
 
    
@@ -100,21 +98,33 @@ def delete_expense(expense_id : int):
 
 @app.put("/expenses/{expense_id}")
 def update_expense(expense_id : int , amount : float ):
+   if amount>0:
+      raise HTTPException(
+         status_code= 400,
+         detail= " Amount cannot be less than 0"
+      )
    conn = get_db()
-   cursor = conn.cursor(Dictionary = True)
+   cursor = conn.cursor(dictionary=True)
 
    cursor.execute("UPDATE expenses SET amount = %s WHERE id = %s" , (amount , expense_id , ))
    conn.commit()
-   affected = cursor.rowcount
+   if cursor.rowcount == 0:
+      cursor.close()
+      conn.close()
+      raise HTTPException(
+         status_code= 404,
+         detail= "Expense Not Found !"
+      )
+   
    cursor.close()
    conn.close()
 
-   return {"message": "Updated"} if affected else {"error": "Not found"}
+   return {"Message": "Expense Updated"}
     
 @app.get("/expenses/total")
 def calc_total():
    conn = get_db()
-   cursor = conn.cursor(Dictionary = True)
+   cursor = conn.cursor(dictionary=True)
 
    cursor.execute("SELECT sum(amount) AS total  FROM expenses ")
    result = cursor.fetchone()
@@ -122,5 +132,27 @@ def calc_total():
    conn.close()
    return {"total": result["total"] if result["total"] else 0}   
 
+@app.get("/expenses/{expense_id}")
+def get_expense(expense_id : int):
+   conn = get_db()
+   cursor = conn.cursor(dictionary=True)
+
+   cursor.execute(
+      "Select * From expenses WHERE id = %s",
+      (expense_id,)
+   )
+
+   expense = cursor.fetchone()
+
+   cursor.close()
+   conn.close()
+
+   if not expense:
+      raise HTTPException(
+         status_code= 404,
+         detail= "Expense not found"
+      )
+   
+   return expense
 
 
